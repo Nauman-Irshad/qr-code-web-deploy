@@ -828,7 +828,7 @@
             c.width = w;
             c.height = h;
             c.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(c.toDataURL('image/jpeg', 0.82));
+            resolve(c.toDataURL('image/jpeg', 0.75));
           };
           img.onerror = function () { resolve(dataUrl); };
           img.src = dataUrl;
@@ -859,7 +859,7 @@
       }
 
       async function saveToFirestore(sessionId, dataUrl) {
-        var compressed = await compressDataUrl(dataUrl, 800);
+        var compressed = await compressDataUrl(dataUrl, 640);
         var url = firestoreDocUrl(sessionId);
         var res = await fetch(url, {
           method: 'PATCH',
@@ -867,6 +867,7 @@
           body: JSON.stringify({
             fields: {
               imageDataUrl: { stringValue: compressed },
+              photoReady: { booleanValue: true },
               updatedAt: { stringValue: new Date().toISOString() },
             },
           }),
