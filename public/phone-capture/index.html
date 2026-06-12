@@ -333,6 +333,75 @@
       from { transform: scale(0.6); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
+    .sync-panel {
+      margin: 18px auto 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.12);
+      max-width: 340px;
+      width: 100%;
+      text-align: left;
+    }
+    .sync-panel-title {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+    .sync-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .sync-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 4px 0;
+      color: #e2e8f0;
+    }
+    .sync-list code {
+      font-size: 11px;
+      word-break: break-all;
+      color: #6ee7b7;
+    }
+    .sync-dot {
+      flex-shrink: 0;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 5px;
+      background: #64748b;
+    }
+    .sync-dot.ok { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,.6); }
+    .sync-dot.bad { background: #ef4444; }
+    .sync-dot.wait { background: #f59e0b; animation: sync-pulse 1.2s ease infinite; }
+    @keyframes sync-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .35; }
+    }
+    .sync-panel.camera-panel {
+      position: absolute;
+      top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 7;
+      margin: 0;
+      width: min(92%, 340px);
+      background: rgba(0,0,0,.72);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .phone-success-status {
+      margin-top: 1.25rem;
+      width: 100%;
+      max-width: 320px;
+    }
   </style>
 </head>
 <body>
@@ -363,6 +432,13 @@
       </button>
       <div id="permErr" class="perm-err" hidden></div>
       <p class="perm-settings" id="permSettings" hidden></p>
+      <div id="syncPanelGate" class="sync-panel" hidden>
+        <p class="sync-panel-title">Connection status</p>
+        <ul class="sync-list">
+          <li id="stFirebaseGate"><span class="sync-dot wait"></span><span>Firebase: checking…</span></li>
+          <li id="stSessionGate"><span class="sync-dot ok"></span><span>Session: <code id="stSessionCodeGate"></code></span></li>
+        </ul>
+      </div>
     </div>
     <div id="camera" hidden>
       <div class="stage">
@@ -376,6 +452,13 @@
         <div id="loading" class="loading" hidden>Opening camera…</div>
         <div id="err" class="err" hidden></div>
         <div id="ok" class="ok" hidden></div>
+        <div id="syncPanelCam" class="sync-panel camera-panel" hidden>
+          <p class="sync-panel-title">Status</p>
+          <ul class="sync-list">
+            <li id="stFirebaseCam"><span class="sync-dot wait"></span><span>Firebase: …</span></li>
+            <li id="stSessionCam"><span class="sync-dot ok"></span><span>Session: <code id="stSessionCodeCam"></code></span></li>
+          </ul>
+        </div>
       </div>
       <div class="bar">
         <button type="button" class="ghost" id="retakeBtn" hidden>Retake</button>
@@ -385,7 +468,15 @@
     <div id="successScreen" class="phone-success-screen" hidden>
       <div class="phone-success-tick" aria-hidden="true">✓</div>
       <h2>Photo sent successfully!</h2>
-      <p>Go back to your computer — your photo will load in Select Model automatically.</p>
+      <p id="successSub">Go back to your computer — your photo will load in Select Model automatically.</p>
+      <div id="syncPanelSuccess" class="sync-panel phone-success-status">
+        <p class="sync-panel-title">Delivery status</p>
+        <ul class="sync-list">
+          <li id="stFirebaseOk"><span class="sync-dot wait"></span><span>Firebase: …</span></li>
+          <li id="stUploadOk"><span class="sync-dot wait"></span><span>Upload: …</span></li>
+          <li id="stDashboardOk"><span class="sync-dot wait"></span><span>Computer: waiting…</span></li>
+        </ul>
+      </div>
     </div>
   </div>
   <canvas id="canvas" hidden></canvas>
@@ -393,6 +484,10 @@
     (function () {
       var params = new URLSearchParams(location.search);
       var phoneSession = params.get('phone_session') || params.get('session') || '';
+      var FIREBASE_PROJECT = 'smart-fitao-web-app';
+      var FIREBASE_API_KEY = 'AIzaSyBjYPdRnwuRSAfTZDZ9fkS-f7hDQccOjOY';
+      var firebaseStatus = 'checking';
+      var desktopPollTimer = null;
 
       var landing = document.getElementById('landing');
       var permGate = document.getElementById('permGate');
@@ -417,10 +512,108 @@
       var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+      function setSyncLine(rowEl, state, text) {
+        if (!rowEl) return;
+        var dot = rowEl.querySelector('.sync-dot');
+        if (dot) {
+          dot.classList.remove('ok', 'bad', 'wait');
+          dot.classList.add(state === 'ok' ? 'ok' : state === 'bad' ? 'bad' : 'wait');
+        }
+        var label = rowEl.querySelector('span:last-child');
+        if (label) label.textContent = text;
+      }
+
+      function firestoreDocUrl(sessionId) {
+        return 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT +
+          '/databases/(default)/documents/phone_tryon_sync/' + encodeURIComponent(sessionId) +
+          '?key=' + FIREBASE_API_KEY;
+      }
+
+      async function checkFirebaseConnection() {
+        try {
+          var res = await fetch(firestoreDocUrl('_connect_probe_' + phoneSession.slice(0, 8)));
+          if (res.status === 404 || res.ok) {
+            firebaseStatus = 'ok';
+            return 'ok';
+          }
+          if (res.status === 403) {
+            firebaseStatus = 'bad';
+            return 'bad';
+          }
+          firebaseStatus = 'bad';
+          return 'bad';
+        } catch (e) {
+          firebaseStatus = 'bad';
+          return 'offline';
+        }
+      }
+
+      function applyFirebaseStatusToUi() {
+        var label = firebaseStatus === 'ok'
+          ? 'Firebase: connected'
+          : firebaseStatus === 'offline'
+            ? 'Firebase: no internet'
+            : 'Firebase: blocked (fix rules)';
+        var state = firebaseStatus === 'ok' ? 'ok' : 'bad';
+        setSyncLine(document.getElementById('stFirebaseGate'), state, label);
+        setSyncLine(document.getElementById('stFirebaseCam'), state, label);
+        setSyncLine(document.getElementById('stFirebaseOk'), state, label);
+      }
+
+      function showSessionOnPanels() {
+        var short = phoneSession.length > 12
+          ? phoneSession.slice(0, 6) + '…' + phoneSession.slice(-4)
+          : phoneSession;
+        ['stSessionCodeGate', 'stSessionCodeCam'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = short;
+        });
+        document.getElementById('syncPanelGate').hidden = false;
+      }
+
+      async function fetchFirestoreDoc(sessionId) {
+        var res = await fetch(firestoreDocUrl(sessionId));
+        if (!res.ok) return null;
+        return res.json();
+      }
+
+      function startDesktopPoll(sessionId) {
+        if (desktopPollTimer) clearInterval(desktopPollTimer);
+        var ticks = 0;
+        var row = document.getElementById('stDashboardOk');
+        setSyncLine(row, 'wait', 'Computer: waiting for dashboard…');
+        desktopPollTimer = setInterval(async function () {
+          ticks += 1;
+          try {
+            var doc = await fetchFirestoreDoc(sessionId);
+            var received = doc && doc.fields && doc.fields.desktopReceived &&
+              doc.fields.desktopReceived.booleanValue === true;
+            if (received) {
+              clearInterval(desktopPollTimer);
+              desktopPollTimer = null;
+              setSyncLine(row, 'ok', 'Computer: photo received on dashboard ✓');
+              var sub = document.getElementById('successSub');
+              if (sub) sub.textContent = 'Your computer got the photo. You can close this page.';
+              return;
+            }
+          } catch (e) { /* keep polling */ }
+          if (ticks >= 45) {
+            clearInterval(desktopPollTimer);
+            desktopPollTimer = null;
+            setSyncLine(row, 'bad', 'Computer: not received yet — keep QR open on PC');
+          } else if (ticks % 3 === 0) {
+            setSyncLine(row, 'wait', 'Computer: still waiting… (' + ticks + ')');
+          }
+        }, 2000);
+      }
+
       if (!phoneSession) {
         landing.hidden = false;
         return;
       }
+
+      showSessionOnPanels();
+      void checkFirebaseConnection().then(applyFirebaseStatusToUi);
 
       permGate.hidden = false;
 
@@ -465,13 +658,19 @@
         okEl.textContent = msg;
         okEl.hidden = !msg;
       }
-      function showSentSuccess() {
+      function showSentSuccess(fireOk, apiOk) {
         showErr('');
         showOk('');
         if (permGate) permGate.hidden = true;
         camera.hidden = true;
         successScreen.hidden = false;
         document.getElementById('wrap').style.background = '#000';
+        applyFirebaseStatusToUi();
+        var uploadText = (fireOk ? 'Firebase ✓' : 'Firebase ✗') + ' · ' +
+          (apiOk ? 'Server ✓' : 'Server ✗');
+        var uploadState = (fireOk || apiOk) ? 'ok' : 'bad';
+        setSyncLine(document.getElementById('stUploadOk'), uploadState, 'Upload: ' + uploadText);
+        startDesktopPoll(phoneSession);
       }
 
       async function stopCamera() {
@@ -513,6 +712,8 @@
           }
           permGate.hidden = true;
           camera.hidden = false;
+          document.getElementById('syncPanelCam').hidden = false;
+          applyFirebaseStatusToUi();
           cameraReady = true;
           await attachCameraStream();
         } catch (e) {
@@ -626,10 +827,7 @@
 
       async function saveToFirestore(sessionId, dataUrl) {
         var compressed = await compressDataUrl(dataUrl, 800);
-        var apiKey = 'AIzaSyBjYPdRnwuRSAfTZDZ9fkS-f7hDQccOjOY';
-        var projectId = 'smart-fitao-web-app';
-        var url = 'https://firestore.googleapis.com/v1/projects/' + projectId +
-          '/databases/(default)/documents/phone_tryon_sync/' + sessionId + '?key=' + apiKey;
+        var url = firestoreDocUrl(sessionId);
         var res = await fetch(url, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -672,7 +870,7 @@
           if (!fireOk && !apiOk) {
             throw new Error('send_failed');
           }
-          showSentSuccess();
+          showSentSuccess(fireOk, apiOk);
         } catch (e) {
           showErr('Could not send photo. Check internet and tap the button to try again.');
           actionBtn.disabled = false;
