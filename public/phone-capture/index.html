@@ -666,10 +666,25 @@
         successScreen.hidden = false;
         document.getElementById('wrap').style.background = '#000';
         applyFirebaseStatusToUi();
-        var uploadText = (fireOk ? 'Firebase ✓' : 'Firebase ✗') + ' · ' +
-          (apiOk ? 'Server ✓' : 'Server ✗');
         var uploadState = (fireOk || apiOk) ? 'ok' : 'bad';
-        setSyncLine(document.getElementById('stUploadOk'), uploadState, 'Upload: ' + uploadText);
+        var uploadText;
+        if (fireOk && apiOk) {
+          uploadText = 'Photo saved — Firebase ✓ and Blob ✓';
+        } else if (fireOk) {
+          uploadText = 'Photo saved on Firebase ✓ (this is enough)';
+        } else if (apiOk) {
+          uploadText = 'Photo saved on Blob ✓';
+        } else {
+          uploadText = 'Upload failed — tap Send again';
+        }
+        setSyncLine(document.getElementById('stUploadOk'), uploadState, uploadText);
+        if (fireOk && !apiOk) {
+          setSyncLine(
+            document.getElementById('stFirebaseOk'),
+            'ok',
+            'Firebase: connected — photo stored',
+          );
+        }
         startDesktopPoll(phoneSession);
       }
 
