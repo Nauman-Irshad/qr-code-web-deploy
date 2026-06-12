@@ -394,7 +394,10 @@
       }
 
       if (!window.isSecureContext) {
-        showPermErr('Camera needs HTTPS. Scan the QR with the iPhone Camera app so Safari opens this page.', false);
+        showPermErr(
+          'This link is not secure (http). On your computer, set VITE_CV_PHONE_URL to your https:// Vercel URL in .env, restart the app, and scan the new QR.',
+          false,
+        );
         allowBtn.disabled = true;
         return;
       }
