@@ -655,18 +655,21 @@
         showOk('Sending photo…');
 
         try {
-          var saved = false;
+          var fireOk = false;
+          var apiOk = false;
+          try {
+            await saveToFirestore(phoneSession, capturedDataUrl);
+            fireOk = true;
+          } catch (fireErr) {
+            console.warn('Firestore save failed', fireErr);
+          }
           try {
             await saveToApi(phoneSession, capturedDataUrl);
-            saved = true;
+            apiOk = true;
           } catch (apiErr) {
-            console.warn('API upload failed, trying backup', apiErr);
+            console.warn('Blob API upload failed', apiErr);
           }
-          if (!saved) {
-            await saveToFirestore(phoneSession, capturedDataUrl);
-            saved = true;
-          }
-          if (!saved) {
+          if (!fireOk && !apiOk) {
             throw new Error('send_failed');
           }
           showSentSuccess();

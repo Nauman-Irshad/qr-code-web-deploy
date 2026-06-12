@@ -1,4 +1,5 @@
 import { head } from "@vercel/blob";
+import { blobAuthOptions } from "../../_blob";
 
 export const config = { runtime: "nodejs" };
 
@@ -30,7 +31,7 @@ export async function GET(
       return Response.json({ ready: false, detail: "missing session" }, { status: 400, headers: CORS });
     }
     try {
-      const photo = await head(`sessions/${sessionId}.jpg`);
+      const photo = await head(`sessions/${sessionId}.jpg`, blobAuthOptions());
       return Response.json({ ready: !!photo }, { headers: CORS });
     } catch {
       return Response.json({ ready: false }, { headers: CORS });

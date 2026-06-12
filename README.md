@@ -10,12 +10,11 @@ Standalone phone camera page for **2D Try-On**. User scans a QR on desktop → o
 4. **Build command:** leave empty (no build)  
 5. **Output directory:** leave empty  
 6. **Connect Blob store to this project:**
-   - Vercel → **Storage** → your store (e.g. `qr-code-scan-computer-visio-blob`) → **Connect to** → **`qr-code-web-deploy`**
-   - Enable **read-write token** or use OIDC (you should see `BLOB_STORE_ID` in project env vars).
-   - **Redeploy** after connecting.
-   - Test: `https://YOUR-APP.vercel.app/api/health` → should show `"blobStoreLinked": true`.
+   - Vercel → **Storage** → `qr-code-scan-computer-visio-blob` → **Projects** → **qr-code-web-deploy**
+   - In **qr-code-web-deploy** → **Settings** → **Environment Variables**, you need **`BLOB_READ_WRITE_TOKEN`** (or OIDC). If only `BLOB_STORE_ID` is present, open the Blob store → **Quickstart** → copy the read-write token → add as `BLOB_READ_WRITE_TOKEN` on the project → **Redeploy**.
+   - Test: `https://qr-code-web-deploy.vercel.app/api/health` → `"blobStoreLinked": true`
 
-   QR photos save to `sessions/{session-id}.jpg` (not the old `captures/` folder).
+   **Note:** Old files under `captures/` are from an earlier flow. QR now saves to **`sessions/{phone_session}.jpg`** (Blob) **or** Firestore `phone_tryon_sync` (works without Blob token).
 
 7. **Firestore fallback (optional):** Firebase → Firestore → Rules → allow `phone_tryon_sync` read/write.
 

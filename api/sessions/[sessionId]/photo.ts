@@ -1,4 +1,5 @@
 import { head, put } from "@vercel/blob";
+import { blobAuthOptions } from "../../_blob";
 
 export const config = { runtime: "nodejs" };
 
@@ -31,7 +32,7 @@ export async function GET(
     }
     const key = `sessions/${sessionId}.jpg`;
     try {
-      const meta = await head(key);
+      const meta = await head(key, blobAuthOptions());
       if (!meta?.url) {
         return new Response("Not found", { status: 404, headers: CORS });
       }
@@ -66,6 +67,7 @@ export async function POST(
     }
 
     await put(`sessions/${sessionId}.jpg`, photo, {
+      ...blobAuthOptions(),
       access: "public",
       addRandomSuffix: false,
       contentType: photo.type || "image/jpeg",
