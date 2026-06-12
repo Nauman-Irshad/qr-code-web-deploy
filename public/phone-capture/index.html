@@ -292,6 +292,47 @@
       max-width: 340px;
       line-height: 1.5;
     }
+    .phone-success-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.5rem;
+      background: linear-gradient(165deg, #052e1f 0%, #000 50%, #0f172a 100%);
+      text-align: center;
+    }
+    .phone-success-screen[hidden] { display: none !important; }
+    .phone-success-tick {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      background: #059669;
+      color: #fff;
+      font-size: 2.75rem;
+      font-weight: 800;
+      line-height: 88px;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 8px 32px rgba(5,150,105,.45);
+      animation: phone-pop 0.45s ease;
+    }
+    .phone-success-screen h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.35rem;
+    }
+    .phone-success-screen p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.5;
+      max-width: 300px;
+    }
+    @keyframes phone-pop {
+      from { transform: scale(0.6); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -340,6 +381,11 @@
         <button type="button" class="ghost" id="retakeBtn" hidden>Retake</button>
         <button type="button" class="primary capture-ready" id="actionBtn" aria-label="Capture photo"></button>
       </div>
+    </div>
+    <div id="successScreen" class="phone-success-screen" hidden>
+      <div class="phone-success-tick" aria-hidden="true">✓</div>
+      <h2>Photo sent successfully!</h2>
+      <p>Go back to your computer — your photo will load in Select Model automatically.</p>
     </div>
   </div>
   <canvas id="canvas" hidden></canvas>
@@ -395,7 +441,7 @@
 
       if (!window.isSecureContext) {
         showPermErr(
-          'This link is not secure (http). On your computer, set VITE_CV_PHONE_URL to your https:// Vercel URL in .env, restart the app, and scan the new QR.',
+          'Open this page by scanning the QR with your iPhone Camera app (not a screenshot link).',
           false,
         );
         allowBtn.disabled = true;
@@ -407,13 +453,25 @@
         return;
       }
 
+      var successScreen = document.getElementById('successScreen');
+
       function showErr(msg) {
+        if (msg) showOk('');
         errEl.textContent = msg;
         errEl.hidden = !msg;
       }
       function showOk(msg) {
+        if (msg) showErr('');
         okEl.textContent = msg;
         okEl.hidden = !msg;
+      }
+      function showSentSuccess() {
+        showErr('');
+        showOk('');
+        if (permGate) permGate.hidden = true;
+        camera.hidden = true;
+        successScreen.hidden = false;
+        document.getElementById('wrap').style.background = '#000';
       }
 
       async function stopCamera() {
@@ -549,7 +607,7 @@
       }
 
       async function saveToApi(sessionId, dataUrl) {
-        var compressed = await compressDataUrl(dataUrl, 960);
+        var compressed = await compressDataUrl(dataUrl, 800);
         var blob = await dataUrlToBlob(compressed);
         var fd = new FormData();
         fd.append('photo', blob, 'phone-photo.jpg');
@@ -561,12 +619,13 @@
         if (!res.ok) {
           var errText = '';
           try { errText = await res.text(); } catch (e) {}
-          throw new Error('Upload failed (' + res.status + '). ' + (errText || 'Set BLOB_READ_WRITE_TOKEN on Vercel.'));
+          console.error('API upload failed', res.status, errText);
+          throw new Error('api_upload_failed');
         }
       }
 
       async function saveToFirestore(sessionId, dataUrl) {
-        var compressed = await compressDataUrl(dataUrl, 960);
+        var compressed = await compressDataUrl(dataUrl, 800);
         var apiKey = 'AIzaSyBjYPdRnwuRSAfTZDZ9fkS-f7hDQccOjOY';
         var projectId = 'smart-fitao-web-app';
         var url = 'https://firestore.googleapis.com/v1/projects/' + projectId +
@@ -582,7 +641,8 @@
           }),
         });
         if (!res.ok) {
-          throw new Error('Could not save photo. Enable Firestore rules for phone_tryon_sync.');
+          console.error('Firestore save failed', res.status);
+          throw new Error('firestore_failed');
         }
       }
 
@@ -592,22 +652,30 @@
         actionBtn.disabled = true;
         retakeBtn.disabled = true;
         showErr('');
-        showOk('Sending to website…');
+        showOk('Sending photo…');
 
         try {
+          var saved = false;
           try {
             await saveToApi(phoneSession, capturedDataUrl);
+            saved = true;
           } catch (apiErr) {
-            await saveToFirestore(phoneSession, capturedDataUrl);
+            console.warn('API upload failed, trying backup', apiErr);
           }
-          showOk('Done! Go back to your computer — photo will appear on try-on.');
-          actionBtn.textContent = 'Sent ✓';
+          if (!saved) {
+            await saveToFirestore(phoneSession, capturedDataUrl);
+            saved = true;
+          }
+          if (!saved) {
+            throw new Error('send_failed');
+          }
+          showSentSuccess();
         } catch (e) {
-          showErr(e.message || 'Could not send photo.');
+          showErr('Could not send photo. Check internet and tap the button to try again.');
           actionBtn.disabled = false;
           retakeBtn.disabled = false;
           actionBtn.classList.remove('capture-ready');
-          actionBtn.textContent = 'Send to website';
+          actionBtn.textContent = 'Send again';
         } finally {
           busy = false;
         }
