@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Permissions-Policy" content="camera=(self)" />
   <title>Smart Fitao · Phone photo</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -217,6 +219,79 @@
     .ios-help strong { color: #6ee7b7; }
     .ios-help ol { margin: 8px 0 0; padding-left: 1.15rem; }
     .ios-help li { margin: 4px 0; }
+    .perm-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 22px calc(28px + env(safe-area-inset-bottom));
+      padding-top: calc(28px + env(safe-area-inset-top));
+      background: linear-gradient(165deg, #0f172a 0%, #000 45%, #052e1f 100%);
+      text-align: center;
+    }
+    .perm-gate[hidden] { display: none !important; }
+    .perm-gate-logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      object-fit: cover;
+      margin-bottom: 18px;
+      box-shadow: 0 8px 28px rgba(5,150,105,.35);
+    }
+    .perm-gate h1 {
+      margin: 0 0 10px;
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+    .perm-gate p {
+      margin: 0 0 12px;
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.55;
+      max-width: 340px;
+    }
+    .perm-gate .perm-popup-note {
+      margin: 16px 0 22px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      background: rgba(5,150,105,.2);
+      border: 1px solid rgba(110,231,183,.35);
+      color: #ecfdf5;
+      font-size: 14px;
+      font-weight: 600;
+      max-width: 340px;
+    }
+    .perm-gate .perm-popup-note strong { color: #6ee7b7; }
+    .allow-btn {
+      min-width: min(100%, 300px);
+      padding: 18px 28px;
+      font-size: 17px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .allow-btn svg { flex-shrink: 0; }
+    .perm-err {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(220,38,38,.9);
+      font-size: 14px;
+      max-width: 340px;
+      line-height: 1.45;
+    }
+    .perm-settings {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #94a3b8;
+      max-width: 340px;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -230,23 +305,40 @@
         Scan that QR with your phone — this page opens so you can take a full-body shalwar kameez photo.
       </p>
     </div>
+    <div id="permGate" class="perm-gate" hidden>
+      <img src="smartfitao-logo.png" alt="" class="perm-gate-logo" />
+      <p class="logo">SMART FITAO AI</p>
+      <h1>Allow camera access</h1>
+      <p>We need your camera to take a full-body shalwar kameez photo for virtual try-on on your computer.</p>
+      <p class="perm-popup-note" id="permPopupNote">
+        After you tap the button below, <strong>Safari will show a popup</strong> — tap <strong>Allow</strong>.
+      </p>
+      <button type="button" class="primary allow-btn" id="allowBtn">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        Allow camera access
+      </button>
+      <div id="permErr" class="perm-err" hidden></div>
+      <p class="perm-settings" id="permSettings" hidden></p>
+    </div>
     <div id="camera" hidden>
       <div class="stage">
         <div class="brand-bar">
           <img src="smartfitao-logo.png" alt="SmartFitao AI" />
-          <p class="scan-title">Scan QR code</p>
+          <p class="scan-title">Take your photo</p>
         </div>
         <video id="video" playsinline muted autoplay></video>
         <img id="preview" class="preview" alt="" hidden />
-        <div class="hint" id="hint">Tap Open camera below</div>
-        <div id="iosHelp" class="ios-help" hidden></div>
-        <div id="loading" class="loading" hidden>Starting camera…</div>
+        <div class="hint" id="hint">Full body in frame · tap the circle to capture</div>
+        <div id="loading" class="loading" hidden>Opening camera…</div>
         <div id="err" class="err" hidden></div>
         <div id="ok" class="ok" hidden></div>
       </div>
       <div class="bar">
         <button type="button" class="ghost" id="retakeBtn" hidden>Retake</button>
-        <button type="button" class="primary" id="actionBtn">Open camera</button>
+        <button type="button" class="primary capture-ready" id="actionBtn" aria-label="Capture photo"></button>
       </div>
     </div>
   </div>
@@ -257,6 +349,10 @@
       var phoneSession = params.get('phone_session') || params.get('session') || '';
 
       var landing = document.getElementById('landing');
+      var permGate = document.getElementById('permGate');
+      var allowBtn = document.getElementById('allowBtn');
+      var permErr = document.getElementById('permErr');
+      var permSettings = document.getElementById('permSettings');
       var camera = document.getElementById('camera');
       var video = document.getElementById('video');
       var preview = document.getElementById('preview');
@@ -267,11 +363,11 @@
       var errEl = document.getElementById('err');
       var okEl = document.getElementById('ok');
       var hint = document.getElementById('hint');
-      var iosHelp = document.getElementById('iosHelp');
 
       var stream = null;
       var capturedDataUrl = null;
       var busy = false;
+      var cameraReady = false;
       var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -280,33 +376,33 @@
         return;
       }
 
-      camera.hidden = false;
+      permGate.hidden = false;
 
-      function showIosHelp() {
-        if (!isIOS) return;
-        iosHelp.hidden = false;
-        iosHelp.innerHTML =
-          '<strong>iPhone:</strong> Tap <strong>Open camera</strong> below, then tap <strong>Allow</strong> when Safari asks.' +
-          '<ol><li>Use the iPhone <strong>Camera</strong> app to scan the QR (opens Safari).</li>' +
-          '<li>If blocked: Settings → Safari → Camera → <strong>Allow</strong>.</li>' +
-          '<li>Or Settings → Safari → Advanced → Website Data → find this site → Camera → Allow.</li></ol>';
+      function showPermErr(msg, showSettings) {
+        permErr.textContent = msg;
+        permErr.hidden = !msg;
+        if (showSettings && isIOS) {
+          permSettings.hidden = false;
+          permSettings.textContent =
+            'Settings → Safari → Camera → Allow. Then come back and tap Allow camera access again.';
+        } else if (showSettings) {
+          permSettings.hidden = false;
+          permSettings.textContent = 'Allow camera in your browser site settings, then try again.';
+        } else {
+          permSettings.hidden = true;
+        }
       }
 
       if (!window.isSecureContext) {
-        showErr('Camera needs a secure link (https). Scan the QR again with the Camera app.');
-        actionBtn.disabled = true;
+        showPermErr('Camera needs HTTPS. Scan the QR with the iPhone Camera app so Safari opens this page.', false);
+        allowBtn.disabled = true;
         return;
       }
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showErr('Open in Safari — in-app browsers (WhatsApp, Instagram) cannot use the camera.');
-        actionBtn.textContent = 'Open in Safari';
+        showPermErr('Open this link in Safari. WhatsApp and Instagram cannot use the camera.', false);
+        allowBtn.textContent = 'Open in Safari';
         return;
       }
-
-      showIosHelp();
-      hint.textContent = isIOS
-        ? 'Tap Open camera, then Allow when asked'
-        : 'Wear shalwar kameez · tap Open camera';
 
       function showErr(msg) {
         errEl.textContent = msg;
@@ -343,13 +439,10 @@
         return 'Could not open camera. Use Safari, tap Retry, and allow camera access.';
       }
 
-      async function startCamera() {
-        showErr('');
-        showOk('');
-        iosHelp.hidden = true;
-        loading.hidden = false;
-        actionBtn.disabled = true;
-        actionBtn.classList.remove('capture-ready');
+      async function requestCameraPermission() {
+        showPermErr('', false);
+        allowBtn.disabled = true;
+        allowBtn.textContent = 'Waiting for Allow…';
         try {
           var constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
           try {
@@ -357,6 +450,24 @@
           } catch (e1) {
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           }
+          permGate.hidden = true;
+          camera.hidden = false;
+          cameraReady = true;
+          await attachCameraStream();
+        } catch (e) {
+          var denied = e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError');
+          showPermErr(cameraErrorMessage(e), denied);
+          allowBtn.disabled = false;
+          allowBtn.innerHTML =
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+            '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+            (denied ? ' Try again — tap Allow' : ' Allow camera access');
+        }
+      }
+
+      async function attachCameraStream() {
+        loading.hidden = false;
+        try {
           video.srcObject = stream;
           video.setAttribute('playsinline', '');
           video.setAttribute('webkit-playsinline', '');
@@ -365,20 +476,24 @@
           var facing = track && track.getSettings ? track.getSettings().facingMode : '';
           video.classList.toggle('mirror', facing === 'user');
           await video.play();
-          actionBtn.textContent = '';
           actionBtn.classList.add('capture-ready');
           actionBtn.setAttribute('aria-label', 'Capture photo');
-          actionBtn.disabled = false;
-          hint.textContent = 'Full body in frame · tap the circle to capture';
+          hint.textContent = 'Full body in shalwar kameez · tap the circle';
         } catch (e) {
-          showErr(cameraErrorMessage(e));
-          if (isIOS) showIosHelp();
-          actionBtn.textContent = 'Retry camera';
-          actionBtn.classList.remove('capture-ready');
-          actionBtn.disabled = false;
+          showErr('Camera started but preview failed. Tap Retake.');
         } finally {
           loading.hidden = true;
         }
+      }
+
+      async function startCamera() {
+        if (cameraReady && stream) {
+          await attachCameraStream();
+          return;
+        }
+        permGate.hidden = false;
+        camera.hidden = true;
+        await requestCameraPermission();
       }
 
       function takePhoto() {
@@ -501,21 +616,38 @@
         showOk('');
         showErr('');
         busy = false;
-        await startCamera();
+        video.hidden = false;
+        preview.hidden = true;
+        actionBtn.classList.add('capture-ready');
+        actionBtn.removeAttribute('aria-label');
+        actionBtn.setAttribute('aria-label', 'Capture photo');
+        actionBtn.textContent = '';
+        if (stream) {
+          await attachCameraStream();
+        } else {
+          cameraReady = false;
+          camera.hidden = true;
+          permGate.hidden = false;
+          allowBtn.disabled = false;
+          allowBtn.innerHTML =
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+            '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Allow camera access';
+          await requestCameraPermission();
+        }
       }
 
+      allowBtn.addEventListener('click', function () {
+        void requestCameraPermission();
+      });
+
       actionBtn.addEventListener('click', function () {
-        if (!stream && !capturedDataUrl) {
-          startCamera();
-          return;
-        }
-        if (!capturedDataUrl) {
+        if (!capturedDataUrl && stream) {
           takePhoto();
-        } else if (!busy) {
+        } else if (capturedDataUrl && !busy) {
           sendPhoto();
         }
       });
-      retakeBtn.addEventListener('click', retake);
+      retakeBtn.addEventListener('click', function () { void retake(); });
     })();
   </script>
 </body>
