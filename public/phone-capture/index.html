@@ -577,6 +577,23 @@
         return res.json();
       }
 
+      async function markPhoneScanned(sessionId) {
+        try {
+          await fetch(firestoreDocUrl(sessionId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                phoneScanned: { booleanValue: true },
+                phoneScannedAt: { stringValue: new Date().toISOString() },
+              },
+            }),
+          });
+        } catch (e) {
+          console.warn('Could not mark phone scanned', e);
+        }
+      }
+
       function startDesktopPoll(sessionId) {
         if (desktopPollTimer) clearInterval(desktopPollTimer);
         var ticks = 0;
@@ -614,6 +631,7 @@
 
       showSessionOnPanels();
       void checkFirebaseConnection().then(applyFirebaseStatusToUi);
+      void markPhoneScanned(phoneSession);
 
       permGate.hidden = false;
 
