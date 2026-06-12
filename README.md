@@ -9,8 +9,15 @@ Standalone phone camera page for **2D Try-On**. User scans a QR on desktop → o
 3. **Root directory:** `./`  
 4. **Build command:** leave empty (no build)  
 5. **Output directory:** leave empty  
-6. Add environment variable:
-   - `BLOB_READ_WRITE_TOKEN` — from [Vercel Blob](https://vercel.com/docs/storage/vercel-blob) (Storage → Create Blob store → connect to project).
+6. **Connect Blob store to this project:**
+   - Vercel → **Storage** → your store (e.g. `qr-code-scan-computer-visio-blob`) → **Connect to** → **`qr-code-web-deploy`**
+   - Enable **read-write token** or use OIDC (you should see `BLOB_STORE_ID` in project env vars).
+   - **Redeploy** after connecting.
+   - Test: `https://YOUR-APP.vercel.app/api/health` → should show `"blobStoreLinked": true`.
+
+   QR photos save to `sessions/{session-id}.jpg` (not the old `captures/` folder).
+
+7. **Firestore fallback (optional):** Firebase → Firestore → Rules → allow `phone_tryon_sync` read/write.
 
 After deploy, your capture URL is:
 
