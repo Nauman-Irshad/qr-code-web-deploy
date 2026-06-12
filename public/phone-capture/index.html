@@ -198,6 +198,25 @@
       box-shadow: 0 6px 24px rgba(5,150,105,.25);
     }
     .logo { color: #059669; font-weight: 800; letter-spacing: .04em; font-size: 13px; }
+    .ios-help {
+      position: absolute;
+      left: 50%;
+      bottom: calc(max(100px, env(safe-area-inset-bottom)) + 72px);
+      transform: translateX(-50%);
+      z-index: 6;
+      width: min(92%, 340px);
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.72);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      font-size: 13px;
+      line-height: 1.45;
+      text-align: left;
+    }
+    .ios-help strong { color: #6ee7b7; }
+    .ios-help ol { margin: 8px 0 0; padding-left: 1.15rem; }
+    .ios-help li { margin: 4px 0; }
   </style>
 </head>
 <body>
@@ -219,14 +238,15 @@
         </div>
         <video id="video" playsinline muted autoplay></video>
         <img id="preview" class="preview" alt="" hidden />
-        <div class="hint" id="hint">Wear shalwar kameez · full body · tap Capture</div>
+        <div class="hint" id="hint">Tap Open camera below</div>
+        <div id="iosHelp" class="ios-help" hidden></div>
         <div id="loading" class="loading" hidden>Starting camera…</div>
         <div id="err" class="err" hidden></div>
         <div id="ok" class="ok" hidden></div>
       </div>
       <div class="bar">
         <button type="button" class="ghost" id="retakeBtn" hidden>Retake</button>
-        <button type="button" class="primary" id="actionBtn" disabled>Open camera</button>
+        <button type="button" class="primary" id="actionBtn">Open camera</button>
       </div>
     </div>
   </div>
@@ -247,10 +267,13 @@
       var errEl = document.getElementById('err');
       var okEl = document.getElementById('ok');
       var hint = document.getElementById('hint');
+      var iosHelp = document.getElementById('iosHelp');
 
       var stream = null;
       var capturedDataUrl = null;
       var busy = false;
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
       if (!phoneSession) {
         landing.hidden = false;
@@ -258,6 +281,32 @@
       }
 
       camera.hidden = false;
+
+      function showIosHelp() {
+        if (!isIOS) return;
+        iosHelp.hidden = false;
+        iosHelp.innerHTML =
+          '<strong>iPhone:</strong> Tap <strong>Open camera</strong> below, then tap <strong>Allow</strong> when Safari asks.' +
+          '<ol><li>Use the iPhone <strong>Camera</strong> app to scan the QR (opens Safari).</li>' +
+          '<li>If blocked: Settings → Safari → Camera → <strong>Allow</strong>.</li>' +
+          '<li>Or Settings → Safari → Advanced → Website Data → find this site → Camera → Allow.</li></ol>';
+      }
+
+      if (!window.isSecureContext) {
+        showErr('Camera needs a secure link (https). Scan the QR again with the Camera app.');
+        actionBtn.disabled = true;
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showErr('Open in Safari — in-app browsers (WhatsApp, Instagram) cannot use the camera.');
+        actionBtn.textContent = 'Open in Safari';
+        return;
+      }
+
+      showIosHelp();
+      hint.textContent = isIOS
+        ? 'Tap Open camera, then Allow when asked'
+        : 'Wear shalwar kameez · tap Open camera';
 
       function showErr(msg) {
         errEl.textContent = msg;
@@ -277,33 +326,41 @@
         preview.hidden = true;
       }
 
+      function cameraErrorMessage(err) {
+        var name = err && err.name ? err.name : '';
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          if (isIOS) {
+            return 'Camera blocked. Tap Allow if Safari asks, or go to Settings → Safari → Camera → Allow, then tap Retry.';
+          }
+          return 'Camera permission denied. Allow camera in browser settings, then tap Retry.';
+        }
+        if (name === 'NotFoundError') {
+          return 'No camera found on this device.';
+        }
+        if (name === 'NotReadableError') {
+          return 'Camera is in use by another app. Close it and tap Retry.';
+        }
+        return 'Could not open camera. Use Safari, tap Retry, and allow camera access.';
+      }
+
       async function startCamera() {
         showErr('');
         showOk('');
+        iosHelp.hidden = true;
         loading.hidden = false;
         actionBtn.disabled = true;
         actionBtn.classList.remove('capture-ready');
-        actionBtn.textContent = 'Open camera';
         try {
-          var constraints = {
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-            },
-            audio: false,
-          };
+          var constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
           try {
             stream = await navigator.mediaDevices.getUserMedia(constraints);
           } catch (e1) {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: { ideal: 'environment' } },
-              audio: false,
-            });
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           }
           video.srcObject = stream;
           video.setAttribute('playsinline', '');
           video.setAttribute('webkit-playsinline', '');
+          video.muted = true;
           var track = stream.getVideoTracks()[0];
           var facing = track && track.getSettings ? track.getSettings().facingMode : '';
           video.classList.toggle('mirror', facing === 'user');
@@ -314,7 +371,8 @@
           actionBtn.disabled = false;
           hint.textContent = 'Full body in frame · tap the circle to capture';
         } catch (e) {
-          showErr('Allow camera access in browser settings, then tap Retry.');
+          showErr(cameraErrorMessage(e));
+          if (isIOS) showIosHelp();
           actionBtn.textContent = 'Retry camera';
           actionBtn.classList.remove('capture-ready');
           actionBtn.disabled = false;
@@ -458,8 +516,6 @@
         }
       });
       retakeBtn.addEventListener('click', retake);
-
-      startCamera();
     })();
   </script>
 </body>
