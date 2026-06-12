@@ -1,5 +1,5 @@
 import { head, put } from "@vercel/blob";
-import { blobAuthOptions } from "../../_blob";
+import { blobAuthOptions } from "../../_blob.js";
 
 export const config = { runtime: "nodejs" };
 
