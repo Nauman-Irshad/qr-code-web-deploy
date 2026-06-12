@@ -29,12 +29,6 @@ export async function GET(
     if (!sessionId) {
       return Response.json({ ready: false, detail: "missing session" }, { status: 400, headers: CORS });
     }
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return Response.json(
-        { ready: false, detail: "Set BLOB_READ_WRITE_TOKEN in Vercel project settings" },
-        { headers: CORS },
-      );
-    }
     try {
       const photo = await head(`sessions/${sessionId}.jpg`);
       return Response.json({ ready: !!photo }, { headers: CORS });

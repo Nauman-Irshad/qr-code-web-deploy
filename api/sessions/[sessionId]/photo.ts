@@ -29,12 +29,6 @@ export async function GET(
     if (!sessionId) {
       return new Response("Not found", { status: 404, headers: CORS });
     }
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return Response.json(
-        { detail: "Set BLOB_READ_WRITE_TOKEN in Vercel project settings" },
-        { status: 503, headers: CORS },
-      );
-    }
     const key = `sessions/${sessionId}.jpg`;
     try {
       const meta = await head(key);
@@ -64,12 +58,6 @@ export async function POST(
     const sessionId = await resolveSessionId(req, ctx);
     if (!sessionId) {
       return Response.json({ detail: "missing session" }, { status: 400, headers: CORS });
-    }
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return Response.json(
-        { detail: "Set BLOB_READ_WRITE_TOKEN in Vercel project settings" },
-        { status: 503, headers: CORS },
-      );
     }
     const form = await req.formData();
     const photo = form.get("photo");
