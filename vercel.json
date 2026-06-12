@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/phone-capture", "destination": "/phone-capture/index.html" },
+    { "source": "/phone-capture/", "destination": "/phone-capture/index.html" },
+    { "source": "/", "destination": "/phone-capture/index.html" }
+  ]
+}
